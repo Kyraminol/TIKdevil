@@ -134,7 +134,7 @@ int menu_draw(const char *title, const char* footer, int back, int count, const 
 
 void menu_multkey_draw(const char *title, const char* footer, int back, int count, const char *options[], void* data, bool (*callback)(int result, u32 key, void* data))
 {
-    int selected = 0;
+    // int selected = 0;
 
     // Select our menu console and clear the screen
     PrintConsole* currentConsole = consoleSelect(&currentMenu.menuConsole);

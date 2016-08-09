@@ -183,12 +183,12 @@ std::vector<std::string> util_get_installed_tickets()
 
 void action_download()
 {
-	printf("Downloading 3ds.nfshost.com page...");
+	printf("Downloading 3ds.titlekeys.com page...");
 	
 	mkpath("/TIKdevil/", 0777);
 	mkpath("/TIKdevil/tickets/", 0777);
 	FILE *oh = fopen("/TIKdevil/fullpage", "wb");
-	Result sres = DownloadFile("http://3ds.nfshost.com/", oh, true);
+	Result sres = DownloadFile("https://3ds.titlekeys.com/", oh, true);
 	fclose(oh);
 	if (sres != 0)
 	{
@@ -433,7 +433,7 @@ void action_about()
     printf("    Generate only missing tickets\n");
     printf("    and directly install them!\n\n\n");
     printf(CONSOLE_BLUE "  Special thanks to:\n");
-	printf("   cearp, Drakia, steveice10.\n" CONSOLE_RESET);
+	printf("   cearp, Drakia, steveice10, Mmcx125.\n" CONSOLE_RESET);
     wait_key_specific("\n\n  Press A to continue.\n", KEY_A);
 }
 
@@ -448,6 +448,7 @@ void action_toggle_region()
 int action_getconfirm(){
 	int ret = 0;
 	char msg[32];
+	/* Commenting out due to missing code handling other regions.
 	sprintf(msg, "Region set to %s are you sure?", region.c_str());
 	if(region=="ALL"){
 	    const char *confirm[] = {
@@ -511,7 +512,7 @@ int action_getconfirm(){
 			clear_screen(GFX_BOTTOM);
 		}
 		consoleClear();
-	}
+	} */
 	return ret;
 }
 

@@ -29,7 +29,7 @@ EXTRA_OUTPUT_FILES :=
 LIBRARY_DIRS := $(DEVKITPRO)/libctru
 LIBRARIES := ctru m
 
-BUILD_FLAGS := -DVERSION_STRING="\"`git describe --tags --abbrev=0`\""
+#BUILD_FLAGS := -DVERSION_STRING="\"`git describe --tags --abbrev=0`\""#
 RUN_FLAGS := 
 
 # 3DS CONFIGURATION #
@@ -52,4 +52,4 @@ ICON := icon.png
 
 # INTERNAL #
 
-include buildtools/make_base
+include bt/make_base

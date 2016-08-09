@@ -10,22 +10,19 @@ Fastest batch TIKs (eShop TIcKets) maker and installer on the planet, right on y
 - Removes temp files, leaving only table for local storage.
 
 **Soon**
-- Region filtering;
+- Region filtering; (partially implemented)
 - Separate menu items for single things;
 - QR to CIA for quick installing and updating TIKdevil;
 - **eShop redirection**;
 - More speeding and stuff :smile_cat: 
 
 # Building
-TIKdevil depends on [libctru](https://github.com/smealum/ctrulib) and a git submodule that will need to be fetched.
+LibCTRU v.1.1.0 or higher is required, this version is not installed with devkitPro by default. This must be compiled, the lazy can look at my fork.
 
-When initially fetching the project, the easiest way to get the code and submodules for building is the following:
+The bt folder contains buildtools for the 3ds, up to date as of 5/29/2016.
 
-`git clone --recursive https://github.com/Kyraminol/TIKdevil.git`
+The code in my fork has been modified to compile with a standard devkitPro Windows environment, excepting changes above. Run make and magic happens.
 
-If you have already checked out the code without the submodules, you can run the following command in the project directory to fetch the submodule data:
-
-`git submodule update --init --recursive`
 
 ## Credits
 

@@ -1,0 +1,317 @@
+# PROLOGUE #
+
+ifeq ($(TARGET),3DS)
+    ifeq ($(strip $(DEVKITPRO)),)
+        $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>devkitPro")
+    endif
+
+    ifeq ($(strip $(DEVKITARM)),)
+        $(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM")
+    endif
+endif
+
+# TOOLS #
+
+BUILDTOOLS_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+
+define createdirrule
+$(1): | $(dir $(1))
+
+ifndef $(dir $(1))_DIRECTORY_RULE_IS_DEFINED
+$(dir $(1)):
+	@mkdir -p $$@
+
+$(dir $(1))_DIRECTORY_RULE_IS_DEFINED := 1
+endif
+endef
+
+rwildcard=$(wildcard $1/$2) $(foreach d,$(wildcard $1/*),$(call rwildcard,$d,$2))
+
+# INITIAL COMMON SETUP #
+
+EMPTY :=
+SPACE := $(EMPTY) $(EMPTY)
+STRIPPED_NAME := $(subst $(SPACE),,$(NAME))
+
+BUILT_FILTER := $(patsubst %.bin,$(BUILD_DIR)/%.bin.o,$(BUILD_FILTER)) \
+		$(patsubst %.c,$(BUILD_DIR)/%.o,$(BUILD_FILTER)) \
+		$(patsubst %.cpp,$(BUILD_DIR)/%.o,$(BUILD_FILTER)) \
+		$(patsubst %.s,$(BUILD_DIR)/%.o,$(BUILD_FILTER))
+
+OBJECT_FILES := $(foreach dir,$(SOURCE_DIRS), \
+			$(patsubst %.bin,$(BUILD_DIR)/%.bin.o,$(call rwildcard,$(dir),*.bin)) \
+			$(patsubst %.c,$(BUILD_DIR)/%.o,$(call rwildcard,$(dir),*.c)) \
+			$(patsubst %.cpp,$(BUILD_DIR)/%.o,$(call rwildcard,$(dir),*.cpp)) \
+			$(patsubst %.s,$(BUILD_DIR)/%.o,$(call rwildcard,$(dir),*.s)) \
+		)
+
+OBJECT_FILES := $(filter-out $(BUILT_FILTER),$(OBJECT_FILES))
+
+OUTPUT_ZIP_FILE := $(OUTPUT_DIR)/$(STRIPPED_NAME).zip
+
+LD_FLAGS := $(patsubst %,-L%/lib,$(LIBRARY_DIRS)) $(patsubst %,-l%,$(LIBRARIES))
+COMMON_CC_FLAGS := $(sort $(foreach dir,$(SOURCE_DIRS),$(patsubst %,-I$(BUILD_DIR)/%,$(dir $(call rwildcard,$(dir),*))))) $(patsubst %,-I%,$(INCLUDE_DIRS)) $(patsubst %,-I%/include,$(LIBRARY_DIRS)) -g -Wall $(BUILD_FLAGS)
+
+ifeq ($(findstring -O,$(BUILD_FLAGS)),)
+	COMMON_CC_FLAGS += -O2
+endif
+
+# COMMON LIBRARY SETUP #
+
+ifeq ($(LIBRARY),1)
+    EXTRA_OUTPUT_FILES += $(INCLUDE_DIRS)
+endif
+
+# TARGET SETUP #
+
+ifeq ($(TARGET),3DS)
+    BUILT_FILTER := $(patsubst %.v.pica,$(BUILD_DIR)/%.shbin.o,$(BUILD_FILTER)) \
+		$(patsubst %.shlist,$(BUILD_DIR)/%.shbin.o,$(BUILD_FILTER)) \
+
+    OBJECT_FILES := $(foreach dir,$(SOURCE_DIRS), \
+			$(patsubst %.v.pica,$(BUILD_DIR)/%.shbin.o,$(call rwildcard,$(dir),*.v.pica)) \
+			$(patsubst %.shlist,$(BUILD_DIR)/%.shbin.o,$(call rwildcard,$(dir),*.shlist)) \
+		) $(OBJECT_FILES)
+
+    OBJECT_FILES := $(filter-out $(BUILT_FILTER),$(OBJECT_FILES))
+
+    ifeq ($(strip $(TITLE)),)
+        TITLE := $(NAME)
+    endif
+
+    REMOTE_IP ?= 127.0.0.1 # User-defined
+
+    AR := $(DEVKITARM)/bin/arm-none-eabi-ar
+    AS := $(DEVKITARM)/bin/arm-none-eabi-as
+    CC := $(DEVKITARM)/bin/arm-none-eabi-gcc
+    CXX := $(DEVKITARM)/bin/arm-none-eabi-g++
+
+    PICASSO := $(DEVKITARM)/bin/picasso
+    SMDHTOOL := $(DEVKITARM)/bin/smdhtool
+    _3DSXTOOL := $(DEVKITARM)/bin/3dsxtool
+    _3DSLINK := $(DEVKITARM)/bin/3dslink
+
+    ifeq ($(OS),Windows_NT)
+        MAKEROM := $(BUILDTOOLS_DIR)/3ds/makerom.exe
+        BANNERTOOL := $(BUILDTOOLS_DIR)/3ds/bannertool.exe
+        CITRA := $(BUILDTOOLS_DIR)/3ds/citra/citra.exe
+    else
+        UNAME_S := $(shell uname -s)
+        ifeq ($(UNAME_S),Linux)
+            MAKEROM := $(BUILDTOOLS_DIR)/3ds/makerom-linux
+            BANNERTOOL := $(BUILDTOOLS_DIR)/3ds/bannertool-linux
+            CITRA := $(BUILDTOOLS_DIR)/3ds/citra/citra-linux
+        endif
+        ifeq ($(UNAME_S),Darwin)
+            MAKEROM := $(BUILDTOOLS_DIR)/3ds/makerom-mac
+            BANNERTOOL := $(BUILDTOOLS_DIR)/3ds/bannertool-mac
+            CITRA := $(BUILDTOOLS_DIR)/3ds/citra/citra-mac
+        endif
+    endif
+
+    ifeq ($(LIBRARY),1)
+        OUTPUT_FILES := $(OUTPUT_DIR)/lib/lib$(STRIPPED_NAME).a
+    else
+        OUTPUT_FILES := $(OUTPUT_DIR)/$(STRIPPED_NAME).elf $(OUTPUT_DIR)/3ds/$(STRIPPED_NAME)/$(STRIPPED_NAME).smdh $(OUTPUT_DIR)/3ds/$(STRIPPED_NAME)/$(STRIPPED_NAME).3dsx $(OUTPUT_DIR)/$(STRIPPED_NAME).3ds $(OUTPUT_DIR)/$(STRIPPED_NAME).cia
+    endif
+
+    LD_FLAGS += -specs=3dsx.specs
+    COMMON_CC_FLAGS += -mword-relocations -fomit-frame-pointer -ffast-math -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -DARM11 -D_3DS
+
+    _3DSXTOOL_FLAGS :=
+    COMMON_MAKEROM_FLAGS := -rsf $(BUILDTOOLS_DIR)/3ds/template.rsf -target t -exefslogo -icon $(BUILD_DIR)/icon.icn -banner $(BUILD_DIR)/banner.bnr -DAPP_TITLE="$(TITLE)" -DAPP_PRODUCT_CODE="$(PRODUCT_CODE)" -DAPP_UNIQUE_ID="$(UNIQUE_ID)" -DAPP_SYSTEM_MODE="$(SYSTEM_MODE)" -DAPP_SYSTEM_MODE_EXT="$(SYSTEM_MODE_EXT)"
+
+    ifneq ("$(wildcard $(ROMFS_DIR))","")
+        _3DSXTOOL_FLAGS += --romfs=$(ROMFS_DIR)
+        COMMON_MAKEROM_FLAGS += -DAPP_ROMFS="$(ROMFS_DIR)"
+    endif
+
+    ifeq ($(suffix $(BANNER_IMAGE)),.cgfx)
+        BANNER_IMAGE_ARG := -ci
+    else
+        BANNER_IMAGE_ARG := -i
+    endif
+
+    ifeq ($(suffix $(BANNER_AUDIO)),.cwav)
+        BANNER_AUDIO_ARG := -ca
+    else
+        BANNER_AUDIO_ARG := -a
+    endif
+else
+    AR := ar
+    AS := as
+    CC := gcc
+    CXX := g++
+
+    ifeq ($(LIBRARY),1)
+        OUTPUT_FILES := $(OUTPUT_DIR)/lib/lib$(STRIPPED_NAME).a $(OUTPUT_DIR)/lib/lib$(STRIPPED_NAME).so
+        COMMON_CC_FLAGS += -fPIC
+    else
+        OUTPUT_FILES := $(OUTPUT_DIR)/$(STRIPPED_NAME)
+    endif
+endif
+
+# FINAL COMMON SETUP #
+
+CC_FLAGS := $(COMMON_CC_FLAGS) -std=gnu99
+CXX_FLAGS := $(COMMON_CC_FLAGS) -std=gnu++11
+
+ifneq ($(EXTRA_OUTPUT_FILES),)
+    EXTRA_OUTPUT_COPY_CMD := cp -r $(EXTRA_OUTPUT_FILES) $(OUTPUT_DIR)
+endif
+
+# MAIN RULES #
+
+.PHONY: all run install clean
+.PRECIOUS: %.bnr %.icn
+
+all: $(OUTPUT_ZIP_FILE)
+
+clean:
+	@rm -rf $(BUILD_DIR) $(OUTPUT_DIR)
+	@echo "Cleaned."
+
+# TARGET RULES #
+
+ifeq ($(TARGET),3DS)
+
+ifeq ($(LIBRARY),1)
+install: $(OUTPUT_FILES) $(OUTPUT_ZIP_FILE)
+	@mkdir -p $(DEVKITPRO)/$(STRIPPED_NAME)
+	@unzip -o $(OUTPUT_ZIP_FILE) -d $(DEVKITPRO)/$(STRIPPED_NAME) > /dev/null
+	@echo "Installed."
+else
+run: $(OUTPUT_FILES) $(OUTPUT_ZIP_FILE)
+	@echo "Running..."
+	@$(CITRA) $(RUN_FLAGS) $(OUTPUT_DIR)/$(STRIPPED_NAME).elf
+
+runhw: $(OUTPUT_FILES) $(OUTPUT_ZIP_FILE)
+	@echo "Running..."
+	@$(_3DSLINK) --address $(REMOTE_IP) $(OUTPUT_DIR)/3ds/$(STRIPPED_NAME)/$(STRIPPED_NAME).3dsx
+endif
+
+$(BUILD_DIR)/%.shbin.o: $(BUILD_DIR)/%.shbin.c
+	@echo $@
+	@$(CC) -c $(CC_FLAGS) -MMD -MP -MF $(BUILD_DIR)/$*.d $< -o $@
+
+define shader-as
+	$(eval CURBIN := $(patsubst %.shbin.c,%.shbin,$@))
+	$(PICASSO) -o $(CURBIN) $1
+	@cd $(dir $(CURBIN)); \
+	xxd -i $(notdir $(CURBIN)) $(CURDIR)/$@
+	echo "extern const u8" `(echo $(notdir $(CURBIN)) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"[];" >> `(echo $(CURBIN) | tr . _)`.h
+	echo "extern const u32" `(echo $(notdir $(CURBIN)) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`_len";" >> `(echo $(CURBIN) | tr . _)`.h
+endef
+
+$(BUILD_DIR)/%.shbin.c: %.v.pica %.g.pica
+	@echo $@
+	@$(call shader-as,$^)
+
+$(BUILD_DIR)/%.shbin.c: %.v.pica
+	@echo $@
+	@$(call shader-as,$<)
+
+$(BUILD_DIR)/%.shbin.c: %.shlist
+	@echo $@
+	@$(call shader-as,$(foreach file,$(shell cat $<),$(dir $<)/$(file)))
+
+%.bnr: $(BANNER_IMAGE) $(BANNER_AUDIO)
+	@echo $@
+	@$(BANNERTOOL) makebanner $(BANNER_IMAGE_ARG) $(BANNER_IMAGE) $(BANNER_AUDIO_ARG) $(BANNER_AUDIO) -o $@ > /dev/null
+
+%.icn: $(ICON)
+	@echo $@
+	@$(BANNERTOOL) makesmdh -s "$(TITLE)" -l "$(TITLE)" -p "$(AUTHOR)" -i $(ICON) $(ICON_FLAGS) -o $@ > /dev/null
+
+%.smdh: $(ICON)
+	@echo $@
+	@$(SMDHTOOL) --create "$(TITLE)" "$(DESCRIPTION)" "$(AUTHOR)" $(ICON) $@
+
+$(OUTPUT_DIR)/3ds/$(STRIPPED_NAME)/%.3dsx: $(OUTPUT_DIR)/%.elf $(OUTPUT_DIR)/3ds/$(STRIPPED_NAME)/%.smdh
+	@echo $@
+	@$(_3DSXTOOL) $< $@ --smdh=$(word 2,$^) $(_3DSXTOOL_FLAGS)
+
+%.3ds: %.elf $(BUILD_DIR)/banner.bnr $(BUILD_DIR)/icon.icn
+	@echo $@
+	@$(MAKEROM) -f cci -o $@ -elf $< -DAPP_ENCRYPTED=true $(COMMON_MAKEROM_FLAGS)
+
+%.cia: %.elf $(BUILD_DIR)/banner.bnr $(BUILD_DIR)/icon.icn
+	@echo $@
+	@$(MAKEROM) -f cia -o $@ -elf $< -DAPP_ENCRYPTED=false $(COMMON_MAKEROM_FLAGS)
+else
+
+ifeq ($(LIBRARY),1)
+install: $(OUTPUT_FILES) $(OUTPUT_ZIP_FILE)
+	@install -m 0755 $(OUTPUT_FILES) /usr/local/lib
+	@install -m 0755 $(foreach dir,$(INCLUDE_DIRS),$(wildcard $(dir)/*)) /usr/local/include
+	@echo "Installed."
+else
+run: $(OUTPUT_FILES) $(OUTPUT_ZIP_FILE)
+	@echo "Running..."
+	@./$< $(RUN_FLAGS)
+
+install: $(OUTPUT_FILES) $(OUTPUT_ZIP_FILE)
+	@install -m 0755 $(OUTPUT_FILES) /usr/local/bin
+	@echo "Installed."
+endif
+
+endif
+
+# COMMON RULES #
+
+$(OUTPUT_ZIP_FILE): $(OUTPUT_FILES) $(EXTRA_OUTPUT_FILES)
+	@echo $@
+	@$(EXTRA_OUTPUT_COPY_CMD)
+	@cd $(OUTPUT_DIR); \
+	zip -r $(patsubst $(OUTPUT_DIR)/%,%,$@ $^) > /dev/null
+
+$(OUTPUT_DIR)/$(STRIPPED_NAME): $(OBJECT_FILES)
+	@echo $@
+	@$(CXX) $(CXX_FLAGS) $^ -o $@ $(LD_FLAGS)
+
+%.elf: $(OBJECT_FILES)
+	@echo $@
+	@$(CXX) $(CXX_FLAGS) $^ -o $@ $(LD_FLAGS)
+
+%.a: $(OBJECT_FILES)
+	@echo $@
+	@$(AR) -rc $@ $^
+
+%.so: $(OBJECT_FILES)
+	@echo $@
+	@$(CXX) $(CXX_FLAGS) -shared $^ -o $@ $(LD_FLAGS)
+
+$(BUILD_DIR)/%.o: %.c
+	@echo $@
+	@$(CC) -c $(CC_FLAGS) -MMD -MP -MF $(BUILD_DIR)/$*.d $< -o $@
+
+$(BUILD_DIR)/%.o: %.cpp
+	@echo $@
+	@$(CXX) -c $(CXX_FLAGS) -MMD -MP -MF $(BUILD_DIR)/$*.d $< -o $@
+
+$(BUILD_DIR)/%.o: %.s
+	@echo $@
+	@$(CC) -c $(CC_FLAGS) -MMD -MP -MF $(BUILD_DIR)/$*.d -x assembler-with-cpp $< -o $@
+
+$(BUILD_DIR)/%.o: %.S
+	@echo $@
+	@$(CC) -c $(CC_FLAGS) -MMD -MP -MF $(BUILD_DIR)/$*.d -x assembler-with-cpp $< -o $@
+
+$(BUILD_DIR)/%.bin.o: $(BUILD_DIR)/%.bin.c
+	@echo $@
+	@$(CC) -c $(CC_FLAGS) -MMD -MP -MF $(BUILD_DIR)/$*.d $< -o $@
+
+$(BUILD_DIR)/%.bin.c: %.bin
+	@echo $@
+	@cd $(<D); \
+	xxd -i $(<F) $(CURDIR)/$@
+	@echo "extern const u8" `(echo $(<F) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"[];" >> `(echo $(BUILD_DIR)/$< | tr . _)`.h
+	@echo "extern const u32" `(echo $(<F) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`_len";" >> `(echo $(BUILD_DIR)/$< | tr . _)`.h
+
+$(foreach file,$(OBJECT_FILES),$(eval $(call createdirrule,$(file))))
+$(foreach file,$(OUTPUT_FILES),$(eval $(call createdirrule,$(file))))
+
+# DEPENDS #
+
+DEPENDS	:= $(OBJECT_FILES:.o=.d)
+-include $(DEPENDS)
