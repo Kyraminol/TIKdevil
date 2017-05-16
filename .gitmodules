@@ -1,3 +1,9 @@
 [submodule "buildtools"]
 	path = buildtools
 	url = https://github.com/Steveice10/buildtools.git
+[submodule "source/eshop"]
+	path = source/eshop
+	url = https://github.com/DanTheMan827/3DS-eShop-Utils.git
+[submodule "source/ConsoleProgressPrinter"]
+	path = source/ConsoleProgressPrinter
+	url = https://github.com/DanTheMan827/ConsoleProgressPrinter.git

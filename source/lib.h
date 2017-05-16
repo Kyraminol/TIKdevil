@@ -37,5 +37,3 @@ along with make_cdn_cia.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "types.h"
 #include "utils.h"
-
-

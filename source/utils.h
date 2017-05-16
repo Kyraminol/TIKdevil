@@ -19,6 +19,24 @@ along with make_cdn_cia.  If not, see <http://www.gnu.org/licenses/>.
 #include <3ds.h>
 
 #define NUS_URL "http://ccs.cdn.c.shop.nintendowifi.net/ccs/download/"
+#define JSON_URL "http://3ds.titlekeys.gq/json_enc"
+
+// Title ID type definitions
+#define ESHOP_GAMEAPP "0000"
+#define ESHOP_DLC "008c"
+#define ESHOP_UPDATE "000e"
+#define ESHOP_DSIWARE "8004"
+
+#define JSON_TYPE_HORNS 1
+#define JSON_TYPE_ONLINE 2
+
+// C++ only code
+#ifdef __cplusplus
+#include <string>
+std::string GetSerialType(std::string sSerial);
+std::string upperCase(std::string input);
+std::string GetSystemRegion();
+#endif
 
 //MISC
 #ifdef __cplusplus
@@ -31,6 +49,8 @@ void u8_hex_print_le(u8 *array, int len);
 u32 align_value(u32 value, u32 alignment);
 void resolve_flag(unsigned char flag, unsigned char *flag_bool);
 void resolve_flag_u16(u16 flag, unsigned char *flag_bool);
+bool download_JSON();
+bool check_JSON(bool forceUpdate);
 //IO Related
 void PrintProgress(u32 nSize, u32 nCurrent);
 void WriteBuffer(void *buffer, u64 size, u64 offset, FILE *output);
